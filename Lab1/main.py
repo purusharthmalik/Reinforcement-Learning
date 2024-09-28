@@ -1,6 +1,5 @@
 import numpy as np
 import random
-import matplotlib.pyplot as plt
 
 class MultiArmedBandit:
     def __init__(self, n_arms, epsilon=0.1):
