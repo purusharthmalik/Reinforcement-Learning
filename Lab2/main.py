@@ -19,12 +19,12 @@ class NonstationaryMultiArmedBandit:
         old_value = self.values[chosen_arm]
         new_value = (1 - self.alpha) * old_value + self.alpha * reward
         self.values[chosen_arm] = new_value
+        self.counts[chosen_arm] += 1
 
 def generate_nonstationary_ctr(t, true_ctrs, change_points):
     for change_point in change_points:
         if t == change_point:
             true_ctrs = [max(0.0, min(1.0, ctr + np.random.uniform(-0.1, 0.1))) for ctr in true_ctrs]
-    
     return true_ctrs
 
 def simulate(bandit, n_simulations, initial_ctrs, change_points):
