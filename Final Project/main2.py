@@ -18,50 +18,40 @@ class SpeakerDiarizationApp:
         # Initialize speech recognizer
         self.recognizer = sr.Recognizer()
         
-        # Initialize speaker embeddings storage with names
-        if 'speaker_data' not in st.session_state:
-            st.session_state.speaker_data = []
+        # Initialize speaker embeddings storage and names
+        if 'speaker_embeddings' not in st.session_state:
+            st.session_state.speaker_embeddings = []
+            st.session_state.speaker_names = []  # Store names of speakers
         
         # Initialize REINFORCE parameters
         self.learning_rate = 0.01
         self.policy_network = self.create_policy_network()
     
     def create_policy_network(self):
-        # Simple policy network for speaker assignment
         return torch.nn.Sequential(
-            torch.nn.Linear(768, 64),  # Assuming 512-dim embeddings
+            torch.nn.Linear(768, 64),  # Assuming 768-dim embeddings
             torch.nn.ReLU(),
             torch.nn.Linear(64, 1),  # Binary action (assign or not)
             torch.nn.Sigmoid()
         )
     
     def resample_audio(self, waveform, original_sample_rate):
-        # Create resampler
         resampler = torchaudio.transforms.Resample(
             orig_freq=original_sample_rate, 
             new_freq=16000
         )
-        
-        # Resample the waveform
-        resampled_waveform = resampler(waveform)
-        
-        return resampled_waveform
+        return resampler(waveform)
     
     def extract_embedding(self, audio_path):
-        # Load audio file
         waveform, sample_rate = torchaudio.load(audio_path)
-        
-        # Resample audio to 16000 Hz
         waveform = self.resample_audio(waveform, sample_rate)
         
-        # Preprocess audio
         inputs = self.feature_extractor(
             waveform.squeeze().numpy(), 
-            sampling_rate=16000,  # Explicitly set to 16000 
+            sampling_rate=16000, 
             return_tensors="pt"
         )
         
-        # Extract embeddings
         with torch.no_grad():
             outputs = self.model(inputs.input_values)
             embedding = outputs.last_hidden_state.mean(dim=1).squeeze().numpy()
@@ -69,7 +59,6 @@ class SpeakerDiarizationApp:
         return embedding
     
     def record_audio(self, duration=5, sample_rate=44100):
-        # Record audio using PyAudio
         audio = pyaudio.PyAudio()
         stream = audio.open(format=pyaudio.paInt16, channels=1, 
                             rate=sample_rate, input=True, 
@@ -84,7 +73,6 @@ class SpeakerDiarizationApp:
         stream.close()
         audio.terminate()
         
-        # Save recorded audio
         output_path = "recorded_audio.wav"
         wf = wave.open(output_path, 'wb')
         wf.setnchannels(1)
@@ -96,7 +84,6 @@ class SpeakerDiarizationApp:
         return output_path
     
     def transcribe_audio(self, audio_path):
-        # Transcribe audio using SpeechRecognition
         with sr.AudioFile(audio_path) as source:
             audio = self.recognizer.record(source)
             try:
@@ -108,16 +95,14 @@ class SpeakerDiarizationApp:
                 return "Could not request results"
     
     def compare_embeddings(self, new_embedding):
-        # Compare new embedding with existing embeddings
         similarities = []
-        for speaker_info in st.session_state.speaker_data:
+        for existing_embedding in st.session_state.speaker_embeddings:
             sim = cosine_similarity(
                 new_embedding.reshape(1, -1), 
-                speaker_info['embedding'].reshape(1, -1)
+                existing_embedding.reshape(1, -1)
             )[0][0]
             similarities.append(sim)
         
-        # Threshold for speaker similarity
         threshold = 0.7
         matching_speakers = [
             i for i, sim in enumerate(similarities) 
@@ -127,90 +112,85 @@ class SpeakerDiarizationApp:
         return matching_speakers
     
     def reinforce_update(self, embedding, action, reward):
-        # REINFORCE algorithm for speaker assignment
         log_prob = torch.log(self.policy_network(torch.tensor(embedding, dtype=torch.float32)))
         loss = -log_prob * reward
         
-        # Perform gradient descent
         optimizer = torch.optim.Adam(self.policy_network.parameters(), lr=self.learning_rate)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-    
-    def display_registered_speakers(self):
-        # Sidebar for displaying registered speakers
-        st.sidebar.header("Registered Speakers")
-        if st.session_state.speaker_data:
-            for i, speaker_info in enumerate(st.session_state.speaker_data):
-                st.sidebar.write(f"{i+1}. {speaker_info['name']}")
-        else:
-            st.sidebar.write("No speakers registered yet")
-    
+
     def run(self):
         st.title("Speaker Diarization and Recognition App")
+
+        # Sidebar for registered users
+        st.sidebar.header("Registered Users")
         
-        # Display registered speakers in sidebar
-        self.display_registered_speakers()
+        if 'speaker_names' in st.session_state and st.session_state.speaker_names:
+            for idx, name in enumerate(st.session_state.speaker_names):
+                st.sidebar.write(f"Speaker {idx + 1}: {name}")
+        
+        new_user_name = st.sidebar.text_input("Name for new user (if detected):")
         
         # Audio input method selection
         input_method = st.radio("Select Audio Input Method", 
                                 ["Upload Audio File", "Record Live Audio"])
         
         audio_path = None
+       
         if input_method == "Upload Audio File":
             uploaded_file = st.file_uploader("Choose an audio file", type=['wav', 'mp3'])
             if uploaded_file is not None:
                 with open("temp_audio.wav", "wb") as f:
                     f.write(uploaded_file.getvalue())
                 audio_path = "temp_audio.wav"
+                
         else:
             if st.button("Start Recording"):
-                audio_path = self.record_audio()
+                with st.spinner("Recording... Please speak!"):
+                    audio_path = self.record_audio()
+
+                    # After recording is done
+                    st.success("Recording complete!")
+
         
         if audio_path:
-            # Extract embedding
-            embedding = self.extract_embedding(audio_path)
-            
-            # Transcribe audio
-            transcription = self.transcribe_audio(audio_path)
-            st.write("Transcription:", transcription)
-            
-            # Compare with existing speakers
-            matching_speakers = self.compare_embeddings(embedding)
-            
-            if matching_speakers:
-                # Existing speaker detected
-                matched_speaker = st.session_state.speaker_data[matching_speakers[0]]
-                st.write(f"Detected as similar to Speaker: {matched_speaker['name']}")
+            with st.spinner("Processing audio..."):
+                embedding = self.extract_embedding(audio_path)
+
+                transcription = self.transcribe_audio(audio_path)
+                st.write("Transcription:", transcription)
+
+                matching_speakers = self.compare_embeddings(embedding)
+
+                if matching_speakers:
+                    speaker_indices = ', '.join(str(i + 1) for i in matching_speakers)
+                    st.write(f"Detected as similar to Speaker(s): {speaker_indices}")
+
+                    user_confirmation = st.radio(
+                        "Is the speaker assignment correct?", 
+                        ["Yes", "No"]
+                    )
+
+                    submit_feedback_button = st.button("Submit Feedback")
+
+                    if submit_feedback_button:
+                        reward = 1 if user_confirmation == "Yes" else -1
+                        self.reinforce_update(embedding, None, reward)
+
+                        # Print confirmation message after policy update
+                        st.success("Model updated successfully!")
                 
-                # Allow user confirmation
-                user_confirmation = st.radio(
-                    "Is the speaker assignment correct?", 
-                    ["Yes", "No"]
-                )
-                
-                # REINFORCE update based on user feedback
-                reward = 1 if user_confirmation == "Yes" else -1
-                self.reinforce_update(embedding, None, reward)
-            else:
-                # New speaker detected
-                st.write("New speaker detected!")
-                
-                # Input for speaker name
-                new_speaker_name = st.text_input("Enter a name for this speaker:")
-                
-                if new_speaker_name:
-                    # Store new speaker data
-                    new_speaker = {
-                        'name': new_speaker_name,
-                        'embedding': embedding
-                    }
-                    st.session_state.speaker_data.append(new_speaker)
-                    
-                    # Refresh the sidebar
-                    self.display_registered_speakers()
-                    
-                    st.success(f"Speaker '{new_speaker_name}' registered successfully!")
+                        if user_confirmation == "No" and new_user_name:
+                            # Add new user name to session state and embeddings list
+                            st.session_state.speaker_names.append(new_user_name)
+                            st.session_state.speaker_embeddings.append(embedding)
+
+                else:
+                    st.write("New speaker detected!")
+                    if new_user_name:  # If a name is provided for the new user.
+                        st.session_state.speaker_names.append(new_user_name)
+                        st.session_state.speaker_embeddings.append(embedding)
 
 def main():
     app = SpeakerDiarizationApp()
