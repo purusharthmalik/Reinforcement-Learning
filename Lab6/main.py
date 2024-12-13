@@ -104,7 +104,6 @@ class DynaQAgent:
                 
                 state = next_state
 
-# Example usage of the Dyna-Q agent with the SimpleGridWorld environment.
 if __name__ == "__main__":
     env = SimpleGridWorld()
     agent = DynaQAgent(env)

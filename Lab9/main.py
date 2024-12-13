@@ -57,7 +57,6 @@ class TD0Agent:
             
             state = next_state
 
-# Example usage of the OneDGridEnv and TD0Agent.
 if __name__ == "__main__":
     env = OneDGridEnv()
     agent = TD0Agent(env)

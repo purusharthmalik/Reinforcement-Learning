@@ -58,12 +58,11 @@ class TD_Agent:
             
             state = next_state
 
-# Example usage of the SimpleGridWorld and TD_Agent.
 if __name__ == "__main__":
     env = SimpleGridWorld()
     agent = TD_Agent(env)
 
-    for episode in range(100):  # Run multiple episodes to learn
+    for episode in range(100):
         agent.learn()
 
     print("Learned State-Value Function:")

@@ -97,14 +97,12 @@ def monte_carlo_control(env, num_episodes=1000):
     
     return policy, V
 
-# Create GridWorld environment with size (4x4), starting at (0,0) and goal at (3,3)
 env_size = (4, 4)
 start_position = (0, 0)
 goal_position = (3, 3)
 
 grid_world_env = GridWorld(size=env_size, start=start_position, goal=goal_position)
 
-# Run Monte Carlo Control to find the optimal policy and value function
 optimal_policy, optimal_value_function = monte_carlo_control(grid_world_env)
 
 print("Optimal Policy:")
